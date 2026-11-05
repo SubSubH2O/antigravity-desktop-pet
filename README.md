@@ -1,4 +1,4 @@
-# 🐱 Desktop Pet Cat for Google Antigravity
+# Desktop Pet Cat for Google Antigravity
 
 A native macOS ambient desktop companion that lives on your screen and reacts to Google Antigravity in real-time.
 
@@ -6,13 +6,13 @@ A native macOS ambient desktop companion that lives on your screen and reacts to
 
 ---
 
-## ✨ Features
+## Features
 
 - **Real-Time Antigravity States**:
-  - **💻 Working**: Types energetically on a laptop while Antigravity is generating code or running tools. Stays typing until all parallel sessions finish.
-  - **❓ Question**: Tilts its head with a gleaming question mark and plays a chime whenever Antigravity is waiting for human input (`ask_question`).
-  - **🐾 Idle & Roaming**: Chunky 4-legged standing idle with calm breathing and gentle tail flick. Takes autonomous 2D strolls (smoothly gliding across both X and Y axes via native macOS WindowServer hardware composition) every 35–60 seconds, pauses to look around, and walks back home. On-demand stroll via right-click **Take a Stroll** (`s`).
-  - **💤 Sleeping**: Curls up with floating cyan `z`s after 10 continuous minutes of inactivity.
+  - **Working**: Types energetically on a laptop while Antigravity is generating code or running tools. Stays typing until all parallel sessions finish.
+  - **Question**: Tilts its head with a gleaming question mark and plays a chime whenever Antigravity is waiting for human input (`ask_question`).
+  - **Idle & Roaming**: Chunky 4-legged standing idle with calm breathing and gentle tail flick. Takes autonomous 2D strolls (smoothly gliding across both X and Y axes via native macOS WindowServer hardware composition) every 35–60 seconds, pauses to look around, and walks back home. On-demand stroll via right-click **Take a Stroll** (`s`).
+  - **Sleeping**: Curls up with floating cyan z's after 10 continuous minutes of inactivity.
 - **Smart 1-Click Jump**:
   - Clicking the cat brings the Antigravity window to the front.
   - If a session is waiting for your input, clicking the cat automatically jumps directly to that specific conversation!
@@ -21,14 +21,12 @@ A native macOS ambient desktop companion that lives on your screen and reacts to
   - Right-click the cat to open the context menu and use **Move to Screen** to teleport it between monitors with 1 click.
 - **Ultra-Lightweight & Battery-Friendly**:
   - Native Swift + AppKit implementation.
-  - Steady-state CPU usage $< 0.7\%$, 0 disk I/O when idle.
+  - Steady-state CPU usage < 0.7%, 0 disk I/O when idle.
   - Automatically pauses animations when screens sleep to preserve MacBook battery.
 
 ---
 
-## 🚀 Installation
-
-### Installation
+## Installation
 
 Clone this repository into your Antigravity plugins directory:
 
@@ -37,11 +35,11 @@ mkdir -p ~/.gemini/config/plugins
 git clone https://github.com/SubSubH2O/antigravity-desktop-pet.git ~/.gemini/config/plugins/desktop-pet
 ```
 
-**That's it!** The next time Antigravity opens (or you start a session), the cat will **automatically compile and launch itself** behind the scenes. Zero manual build commands required!
+That is it. The next time Antigravity opens (or you start a session), the cat will automatically compile and launch itself behind the scenes. Zero manual build commands required.
 
 ---
 
-## 🛠 Project Structure
+## Project Structure
 
 ```
 desktop-pet/
@@ -62,9 +60,3 @@ desktop-pet/
     ├── walking_1..8.png
     └── sleeping_1..12.png
 ```
-
----
-
-## 📄 License
-
-Apache-2.0
