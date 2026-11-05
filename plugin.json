@@ -1,0 +1,24 @@
+{
+  "name": "desktop-pet",
+  "displayName": "Desktop Pet Cat",
+  "version": "1.0.0",
+  "description": "Ambient retro pixel cat companion that reflects Antigravity coding, thinking, and input states in real time with 1-click window focus.",
+  "logo": "assets/logo.png",
+  "suggestedPrompts": [
+    "Launch my Desktop Pet Cat",
+    "Reset the cat's screen position",
+    "Open the pet's custom sprites folder"
+  ],
+  "author": {
+    "name": "Antigravity Pair"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "pet",
+    "companion",
+    "cat",
+    "pixel-art",
+    "desktop",
+    "ambient"
+  ]
+}

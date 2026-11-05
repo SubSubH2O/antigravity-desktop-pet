@@ -1,0 +1,43 @@
+{
+  "desktop-pet-hooks": {
+    "enabled": true,
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "./scripts/start_pet.sh",
+        "timeout": 10
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./scripts/set_state.sh pre_tool",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "ask_question",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./scripts/set_state.sh working",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "./scripts/set_state.sh idle",
+        "timeout": 5
+      }
+    ]
+  }
+}
