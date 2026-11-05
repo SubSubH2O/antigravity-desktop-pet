@@ -377,12 +377,11 @@ class CatView: NSView {
         imageView.image = frames[frameIndex]
     }
 
-    // MARK: - Local Roaming & Strolling Engine
+    // MARK: - Local Roaming & Strolling Engine (Smooth 2D Autonomous Wandering)
     var isWalking: Bool = false
-    var walkStep: Int = 0
     var homePosition: NSPoint = .zero
     var strollTimer: Timer?
-    var movementTimer: Timer?
+    private var currentWalkUUID: UUID? = nil
     private var nextStrollTime: Date = Date().addingTimeInterval(35.0)
 
     func setFacing(right: Bool) {
@@ -397,11 +396,18 @@ class CatView: NSView {
     }
 
     func cancelStroll() {
-        movementTimer?.invalidate()
-        movementTimer = nil
-        isWalking = false
-        setFacing(right: true)
-        updateSprite()
+        currentWalkUUID = nil
+        if isWalking {
+            isWalking = false
+            if let win = catWindow {
+                // Instantly cancel ongoing animation and freeze at current window frame
+                win.setFrame(win.frame, display: true)
+            }
+            setFacing(right: true)
+            animStep = 0
+            updateSprite()
+            scheduleNextFrame()
+        }
     }
 
     private func setupStrollTimer() {
@@ -420,8 +426,8 @@ class CatView: NSView {
         startStroll()
     }
 
-    private func startStroll() {
-        guard let window = catWindow else { return }
+    func startStroll() {
+        guard let window = catWindow, currentState == .idle, !isDragging, !isWalking else { return }
         if homePosition == .zero {
             homePosition = window.frame.origin
         }
@@ -430,26 +436,55 @@ class CatView: NSView {
         let visible = screen.visibleFrame
         let petSize: CGFloat = 86.0
 
-        // Choose random wander distance between 110 and 180 px
-        let direction: CGFloat = Bool.random() ? 1.0 : -1.0
-        let distance: CGFloat = CGFloat.random(in: 110.0...180.0) * direction
-        let targetX = max(visible.minX + 20, min(homePosition.x + distance, visible.maxX - petSize - 20))
+        let minX = visible.minX + 24.0
+        let maxX = visible.maxX - petSize - 24.0
+        let minY = visible.minY + 24.0
+        let maxY = visible.maxY - petSize - 24.0
 
-        if abs(targetX - homePosition.x) < 40 { return }
+        // 2D roam: delta X in [-180, 180], delta Y in [-120, 120]
+        let rawTargetX = homePosition.x + CGFloat.random(in: -180.0...180.0)
+        let rawTargetY = homePosition.y + CGFloat.random(in: -120.0...120.0)
+
+        let targetX = max(minX, min(rawTargetX, maxX))
+        let targetY = max(minY, min(rawTargetY, maxY))
+        let targetPoint = NSPoint(x: targetX, y: targetY)
+
+        let dist = hypot(targetPoint.x - homePosition.x, targetPoint.y - homePosition.y)
+        if dist < 45.0 { return }
 
         isWalking = true
-        walkTo(targetX: targetX) { [weak self] in
-            guard let self = self, self.isWalking, self.currentState == .idle else { return }
-            // Pauses at destination to look around for 1.8 seconds
-            self.setFacing(right: targetX < self.homePosition.x)
-            self.updateSprite()
+        animStep = 0
+        updateSprite()
+        scheduleNextFrame()
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in
-                guard let self = self, self.isWalking, self.currentState == .idle else { return }
+        walkTo(targetPoint: targetPoint, speed: 50.0) { [weak self] in
+            guard let self = self, self.isWalking, self.currentState == .idle else { return }
+
+            // Reached destination: sit and look around for 1.8 to 2.5 seconds
+            self.isWalking = false
+            self.animStep = 0
+            // Face back towards home position while resting
+            let returnDx = self.homePosition.x - targetPoint.x
+            if abs(returnDx) > 6.0 {
+                self.setFacing(right: returnDx > 0)
+            }
+            self.updateSprite()
+            self.scheduleNextFrame()
+
+            let restPause = Double.random(in: 1.8...2.5)
+            DispatchQueue.main.asyncAfter(deadline: .now() + restPause) { [weak self] in
+                guard let self = self, !self.isWalking, self.currentState == .idle, !self.isDragging else { return }
+
                 // Walk back home!
-                self.walkTo(targetX: self.homePosition.x) { [weak self] in
+                self.isWalking = true
+                self.animStep = 0
+                self.updateSprite()
+                self.scheduleNextFrame()
+
+                self.walkTo(targetPoint: self.homePosition, speed: 50.0) { [weak self] in
                     guard let self = self else { return }
                     self.isWalking = false
+                    self.animStep = 0
                     self.setFacing(right: true)
                     self.updateSprite()
                     self.scheduleNextFrame()
@@ -458,38 +493,36 @@ class CatView: NSView {
         }
     }
 
-    private func walkTo(targetX: CGFloat, completion: @escaping () -> Void) {
-        guard let window = catWindow else { return }
-        let movingRight = targetX > window.frame.origin.x
-        setFacing(right: movingRight)
+    private func walkTo(targetPoint: NSPoint, speed: CGFloat = 50.0, completion: @escaping () -> Void) {
+        guard let win = catWindow, currentState == .idle, !isDragging else { return }
+        let currentPoint = win.frame.origin
+        let distance = hypot(targetPoint.x - currentPoint.x, targetPoint.y - currentPoint.y)
+        guard distance > 4.0 else {
+            completion()
+            return
+        }
 
-        movementTimer?.invalidate()
-        movementTimer = Timer.scheduledTimer(withTimeInterval: 0.04, repeats: true) { [weak self] timer in
-            guard let self = self, let win = self.catWindow, self.currentState == .idle, !self.isDragging else {
-                timer.invalidate()
-                self?.cancelStroll()
+        let dx = targetPoint.x - currentPoint.x
+        if abs(dx) > 6.0 {
+            setFacing(right: dx > 0)
+        }
+
+        let duration = max(0.4, Double(distance / speed))
+
+        let thisWalkUUID = UUID()
+        currentWalkUUID = thisWalkUUID
+
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = duration
+            context.timingFunction = CAMediaTimingFunction(name: .linear)
+            win.animator().setFrame(NSRect(origin: targetPoint, size: win.frame.size), display: false)
+        }, completionHandler: { [weak self] in
+            guard let self = self else { return }
+            guard self.isWalking, self.currentState == .idle, !self.isDragging, self.currentWalkUUID == thisWalkUUID else {
                 return
             }
-
-            let currentX = win.frame.origin.x
-            let diff = targetX - currentX
-            let stepSpeed: CGFloat = 2.0 // 50 px/second pace
-
-            if abs(diff) <= stepSpeed {
-                win.setFrameOrigin(NSPoint(x: targetX, y: win.frame.origin.y))
-                timer.invalidate()
-                self.movementTimer = nil
-                completion()
-            } else {
-                let nextX = currentX + (diff > 0 ? stepSpeed : -stepSpeed)
-                win.setFrameOrigin(NSPoint(x: nextX, y: win.frame.origin.y))
-                self.walkStep += 1
-                if self.walkStep % 2 == 0 {
-                    self.animStep += 1
-                    self.updateSprite()
-                }
-            }
-        }
+            completion()
+        })
     }
 
     // MARK: - State Watcher with POSIX stat() Caching & 10-Minute Sleep Rule
@@ -611,8 +644,10 @@ class CatView: NSView {
 
     override func rightMouseUp(with event: NSEvent) {
         lastActiveDate = Date()
+        cancelStroll()
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Switch to Antigravity", action: #selector(switchMenu), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Take a Stroll", action: #selector(takeStrollMenu), keyEquivalent: "s"))
         menu.addItem(NSMenuItem.separator())
 
         if NSScreen.screens.count > 1 {
@@ -645,6 +680,7 @@ class CatView: NSView {
     }
 
     @objc func switchMenu() { catWindow?.activateAntigravity() }
+    @objc func takeStrollMenu() { startStroll() }
     @objc func openSpritesMenu() { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: USER_SPRITES_DIR) }
     @objc func resetPositionMenu() { catWindow?.resetToDefaultPosition() }
     @objc func quitAppMenu() { NSApp.terminate(nil) }
