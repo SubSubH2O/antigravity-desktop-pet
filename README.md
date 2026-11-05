@@ -11,7 +11,7 @@ A native macOS ambient desktop companion that lives on your screen and reacts to
 - **Real-Time Antigravity States**:
   - **💻 Working**: Types energetically on a laptop while Antigravity is generating code or running tools. Stays typing until all parallel sessions finish.
   - **❓ Question**: Tilts its head with a gleaming question mark and plays a chime whenever Antigravity is waiting for human input (`ask_question`).
-  - **🐾 Idle**: Sits peacefully, breathing and gently swishing its tail. Takes an autonomous 3–5 second local stroll every 35–60 seconds, then returns home.
+  - **🐾 Idle & Roaming**: Chunky 4-legged standing idle with calm breathing and gentle tail flick. Takes autonomous 2D strolls (smoothly gliding across both X and Y axes via native macOS WindowServer hardware composition) every 35–60 seconds, pauses to look around, and walks back home. On-demand stroll via right-click **Take a Stroll** (`s`).
   - **💤 Sleeping**: Curls up with floating cyan `z`s after 10 continuous minutes of inactivity.
 - **Smart 1-Click Jump**:
   - Clicking the cat brings the Antigravity window to the front.
@@ -34,7 +34,7 @@ Clone or copy this repository into your Antigravity plugins directory:
 
 ```bash
 mkdir -p ~/.gemini/config/plugins
-git clone <your-repo-url> ~/.gemini/config/plugins/desktop-pet
+git clone https://github.com/SubSubH2O/antigravity-desktop-pet.git ~/.gemini/config/plugins/desktop-pet
 ```
 
 Rebuild the binary once:
@@ -61,7 +61,7 @@ desktop-pet/
 │   ├── set_state.py          # Multi-conversation priority engine
 │   └── switch_conversation.py # Active conversation switcher
 └── sprites/                   # Pixel art animation frames
-    ├── idle_1..12.png
+    ├── idle_1..8.png
     ├── working_1..12.png
     ├── question_1..8.png
     ├── walking_1..8.png
