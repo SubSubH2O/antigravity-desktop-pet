@@ -257,7 +257,7 @@ class CatView: NSView {
             return frames
         }
 
-        sprites["idle"] = loadFrames("idle", count: 12)
+        sprites["idle"] = loadFrames("idle", count: 8)
         sprites["sleeping"] = loadFrames("sleeping", count: 12)
         sprites["working"] = loadFrames("working", count: 12)
         sprites["question"] = loadFrames("question", count: 8)
@@ -339,7 +339,7 @@ class CatView: NSView {
         case .working:
             return 1.0 / 12.0  // 12 FPS: snappy paw clacking
         case .idle:
-            return 1.0 / 10.0  // 10 FPS: smooth 1.2s breathing cycle
+            return 1.0 / 8.0   // 8 FPS: calm 1.0s breathing & tail flick cycle
         case .sleeping:
             return 1.0 / 7.0   // 7 FPS: peaceful snoozing & cyan 'z'
         case .question:
