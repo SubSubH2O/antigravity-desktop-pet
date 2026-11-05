@@ -28,21 +28,16 @@ A native macOS ambient desktop companion that lives on your screen and reacts to
 
 ## 🚀 Installation
 
-### Option 1: As an Antigravity Plugin
+### Installation
 
-Clone or copy this repository into your Antigravity plugins directory:
+Clone this repository into your Antigravity plugins directory:
 
 ```bash
 mkdir -p ~/.gemini/config/plugins
 git clone https://github.com/SubSubH2O/antigravity-desktop-pet.git ~/.gemini/config/plugins/desktop-pet
 ```
 
-Rebuild the binary once:
-```bash
-swiftc ~/.gemini/config/plugins/desktop-pet/main.swift -o ~/.gemini/config/plugins/desktop-pet/bin/DesktopPetCat
-```
-
-The plugin will automatically be recognized by Antigravity in the **Customizations** pane!
+**That's it!** The next time Antigravity opens (or you start a session), the cat will **automatically compile and launch itself** behind the scenes. Zero manual build commands required!
 
 ---
 
