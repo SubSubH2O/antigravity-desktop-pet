@@ -8,6 +8,13 @@
         "timeout": 10
       }
     ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "./scripts/set_state.sh working",
+        "timeout": 5
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "*",

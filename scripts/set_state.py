@@ -33,6 +33,7 @@ elif target_state == "post_tool_question":
 # Load existing state
 existing_data = {
     "conversations": {},
+    "conversation_times": {},
     "state": "idle",
     "waitingConversationId": None,
     "timestamp": int(time.time())
@@ -44,20 +45,37 @@ if os.path.exists(STATE_FILE):
             data = json.load(fp)
             if isinstance(data, dict):
                 existing_data["conversations"] = data.get("conversations", {})
+                existing_data["conversation_times"] = data.get("conversation_times", {})
     except Exception:
         pass
 
-# Update conversation state
 conversations = existing_data["conversations"]
+conversation_times = existing_data["conversation_times"]
+now = int(time.time())
 
 if target_state in ("working", "question"):
     conversations[convo_id] = target_state
+    conversation_times[convo_id] = now
 elif target_state == "idle":
-    # If a conversation finishes/stops, remove it or set it to idle
     if convo_id in conversations:
         conversations[convo_id] = "idle"
+        conversation_times[convo_id] = now
 
-# Purge any old conversations that have been idle or inactive
+# Prune conversations inactive for over 15 minutes or idle for over 3 minutes
+cleaned_conversations = {}
+cleaned_times = {}
+for cid, st in conversations.items():
+    last_seen = conversation_times.get(cid, now)
+    if now - last_seen > 900:
+        continue
+    if st == "idle" and (now - last_seen > 180):
+        continue
+    cleaned_conversations[cid] = st
+    cleaned_times[cid] = last_seen
+
+conversations = cleaned_conversations
+conversation_times = cleaned_times
+
 # Determine overall state by priority:
 # Priority 1: question (if ANY conversation needs input)
 # Priority 2: working (if ANY conversation is working)
@@ -82,7 +100,8 @@ output_data = {
     "state": overall_state,
     "waitingConversationId": waiting_convo_id,
     "conversations": conversations,
-    "timestamp": int(time.time())
+    "conversation_times": conversation_times,
+    "timestamp": now
 }
 
 os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
@@ -90,5 +109,10 @@ with open(TMP_FILE, "w") as fp:
     json.dump(output_data, fp)
 os.replace(TMP_FILE, STATE_FILE)
 
-# Required stdout decision for PreToolUse
-print(json.dumps({"decision": "allow"}))
+# Required stdout contract:
+# PreToolUse requires {"decision": "allow"}
+# PreInvocation, PostToolUse, and Stop require {}
+if len(sys.argv) > 1 and sys.argv[1] == "pre_tool":
+    print(json.dumps({"decision": "allow"}))
+else:
+    print(json.dumps({}))

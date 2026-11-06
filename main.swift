@@ -617,8 +617,10 @@ class CatView: NSView {
 
         let stateStr = cachedStateStr
         if stateStr == "working" {
+            self.lastActiveDate = Date()
             self.setState(.working)
         } else if stateStr == "question" {
+            self.lastActiveDate = Date()
             self.setState(.question)
         } else {
             let inactiveSeconds = Date().timeIntervalSince(self.lastActiveDate)
