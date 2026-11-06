@@ -461,6 +461,7 @@ class CatView: NSView {
             if let win = catWindow {
                 // Instantly cancel ongoing animation and freeze at current window frame
                 win.setFrame(win.frame, display: true)
+                catWindow?.savePosition()
             }
             setFacing(right: true)
             animStep = 0
@@ -487,9 +488,6 @@ class CatView: NSView {
 
     func startStroll() {
         guard let window = catWindow, currentState == .idle, !isDragging, !isWalking else { return }
-        if homePosition == .zero {
-            homePosition = window.frame.origin
-        }
 
         let screen = window.screen ?? NSScreen.main ?? NSScreen.screens[0]
         let visible = screen.visibleFrame
@@ -500,16 +498,32 @@ class CatView: NSView {
         let minY = visible.minY + 24.0
         let maxY = visible.maxY - petSize - 24.0
 
-        // 2D roam: delta X in [-180, 180], delta Y in [-120, 120]
-        let rawTargetX = homePosition.x + CGFloat.random(in: -180.0...180.0)
-        let rawTargetY = homePosition.y + CGFloat.random(in: -120.0...120.0)
+        let curX = window.frame.origin.x
+        let curY = window.frame.origin.y
 
-        let targetX = max(minX, min(rawTargetX, maxX))
-        let targetY = max(minY, min(rawTargetY, maxY))
+        // Pick random angle and distance (80 to 170 px)
+        var angle = Double.random(in: 0.0...(2.0 * .pi))
+        let distance = CGFloat.random(in: 80.0...170.0)
+
+        var rawX = curX + distance * CGFloat(cos(angle))
+        var rawY = curY + distance * CGFloat(sin(angle))
+
+        // If wandering out of screen boundaries, turn inward towards center of display
+        if rawX < minX || rawX > maxX || rawY < minY || rawY > maxY {
+            let centerX = (minX + maxX) / 2.0
+            let centerY = (minY + maxY) / 2.0
+            let inwardAngle = atan2(Double(centerY - curY), Double(centerX - curX))
+            angle = inwardAngle + Double.random(in: -(.pi / 4.0)...(.pi / 4.0))
+            rawX = curX + distance * CGFloat(cos(angle))
+            rawY = curY + distance * CGFloat(sin(angle))
+        }
+
+        let targetX = max(minX, min(rawX, maxX))
+        let targetY = max(minY, min(rawY, maxY))
         let targetPoint = NSPoint(x: targetX, y: targetY)
 
-        let dist = hypot(targetPoint.x - homePosition.x, targetPoint.y - homePosition.y)
-        if dist < 45.0 { return }
+        let travelDist = hypot(targetPoint.x - curX, targetPoint.y - curY)
+        if travelDist < 35.0 { return }
 
         isWalking = true
         animStep = 0
@@ -519,36 +533,12 @@ class CatView: NSView {
         walkTo(targetPoint: targetPoint, speed: 50.0) { [weak self] in
             guard let self = self, self.isWalking, self.currentState == .idle else { return }
 
-            // Reached destination: sit and look around for 1.8 to 2.5 seconds
+            // Reached destination: settle down here as new spot!
             self.isWalking = false
             self.animStep = 0
-            // Face back towards home position while resting
-            let returnDx = self.homePosition.x - targetPoint.x
-            if abs(returnDx) > 6.0 {
-                self.setFacing(right: returnDx > 0)
-            }
             self.updateSprite()
             self.scheduleNextFrame()
-
-            let restPause = Double.random(in: 1.8...2.5)
-            DispatchQueue.main.asyncAfter(deadline: .now() + restPause) { [weak self] in
-                guard let self = self, !self.isWalking, self.currentState == .idle, !self.isDragging else { return }
-
-                // Walk back home!
-                self.isWalking = true
-                self.animStep = 0
-                self.updateSprite()
-                self.scheduleNextFrame()
-
-                self.walkTo(targetPoint: self.homePosition, speed: 50.0) { [weak self] in
-                    guard let self = self else { return }
-                    self.isWalking = false
-                    self.animStep = 0
-                    self.setFacing(right: true)
-                    self.updateSprite()
-                    self.scheduleNextFrame()
-                }
-            }
+            self.catWindow?.savePosition()
         }
     }
 

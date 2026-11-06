@@ -11,7 +11,7 @@ A native macOS ambient desktop companion that lives on your screen and reacts to
 - **Real-Time Antigravity States**:
   - **Working**: Types energetically on a laptop while Antigravity is generating code or running tools. Stays typing until all parallel sessions finish.
   - **Question**: Tilts its head with a gleaming question mark and plays a chime whenever Antigravity is waiting for human input (`ask_question`).
-  - **Idle & Roaming**: Chunky 4-legged standing idle with calm breathing and gentle tail flick. Takes autonomous 2D strolls (smoothly gliding across both X and Y axes via native macOS WindowServer hardware composition) every 35–60 seconds, pauses to look around, and walks back home. On-demand stroll via right-click **Take a Stroll** (`s`).
+  - **Idle & Roaming**: Chunky 4-legged standing idle with calm breathing and gentle tail flick. Takes autonomous 2D strolls (smoothly gliding across both X and Y axes via native macOS WindowServer hardware composition) every 35–60 seconds, explores new spots across your screen, settles down, and saves its new location. On-demand stroll via right-click **Take a Stroll** (`s`).
   - **Sleeping**: Curls up with floating cyan z's after 10 continuous minutes of inactivity.
 - **Smart 1-Click Jump**:
   - Clicking the cat brings the Antigravity window to the front.
