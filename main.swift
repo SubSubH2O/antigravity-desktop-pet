@@ -6,6 +6,7 @@ let USER_SPRITES_DIR = NSString(string: "~/.desktop-pet/sprites").expandingTilde
 let PLUGIN_SPRITES_DIR = NSString(string: "~/.gemini/config/plugins/desktop-pet/sprites").expandingTildeInPath
 let LIVE_STATE_FILE = NSString(string: "~/.desktop-pet/live_state.json").expandingTildeInPath
 let POSITION_FILE = NSString(string: "~/.desktop-pet/position.json").expandingTildeInPath
+let SETTINGS_FILE = NSString(string: "~/.desktop-pet/settings.json").expandingTildeInPath
 
 // 10 minutes of inactivity required before sleeping
 let SLEEP_INACTIVITY_SECONDS: TimeInterval = 600.0
@@ -211,6 +212,9 @@ class CatView: NSView {
     var initialWindowLocation: NSPoint = .zero
     var isDragging: Bool = false
 
+    var soundEffectsEnabled: Bool = true
+    var questionChimeEnabled: Bool = true
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
@@ -223,8 +227,31 @@ class CatView: NSView {
         imageView.imageAlignment = .alignCenter
         addSubview(imageView)
 
+        loadSettings()
         loadAllSprites()
         startTimers()
+    }
+
+    func loadSettings() {
+        if FileManager.default.fileExists(atPath: SETTINGS_FILE) {
+            if let data = try? Data(contentsOf: URL(fileURLWithPath: SETTINGS_FILE)),
+               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let se = dict["soundEffects"] as? Bool { soundEffectsEnabled = se }
+                if let qc = dict["questionChime"] as? Bool { questionChimeEnabled = qc }
+            }
+        } else {
+            saveSettings()
+        }
+    }
+
+    func saveSettings() {
+        let dict: [String: Any] = [
+            "soundEffects": soundEffectsEnabled,
+            "questionChime": questionChimeEnabled
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted]) {
+            try? data.write(to: URL(fileURLWithPath: SETTINGS_FILE))
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -312,13 +339,17 @@ class CatView: NSView {
 
         switch newState {
         case .question:
-            NSSound(named: "Ping")?.play()
+            if questionChimeEnabled {
+                NSSound(named: "Ping")?.play()
+            }
             lastActiveDate = Date()
         case .working:
-            NSSound(named: "Tink")?.play()
+            if soundEffectsEnabled {
+                NSSound(named: "Tink")?.play()
+            }
             lastActiveDate = Date()
         case .idle:
-            if previousState == .working {
+            if previousState == .working && soundEffectsEnabled {
                 NSSound(named: "Glass")?.play()
             }
             lastActiveDate = Date()
@@ -650,6 +681,28 @@ class CatView: NSView {
         menu.addItem(NSMenuItem(title: "Take a Stroll", action: #selector(takeStrollMenu), keyEquivalent: "s"))
         menu.addItem(NSMenuItem.separator())
 
+        // Sounds Submenu
+        let soundMenu = NSMenu()
+        let seItem = NSMenuItem(title: "Sound Effects", action: #selector(toggleSoundEffectsMenu), keyEquivalent: "")
+        seItem.state = soundEffectsEnabled ? .on : .off
+        soundMenu.addItem(seItem)
+
+        let qcItem = NSMenuItem(title: "Question Chime", action: #selector(toggleQuestionChimeMenu), keyEquivalent: "")
+        qcItem.state = questionChimeEnabled ? .on : .off
+        soundMenu.addItem(qcItem)
+
+        soundMenu.addItem(NSMenuItem.separator())
+
+        let isAnySoundOn = soundEffectsEnabled || questionChimeEnabled
+        let muteAllTitle = isAnySoundOn ? "Mute All" : "Unmute All"
+        soundMenu.addItem(NSMenuItem(title: muteAllTitle, action: #selector(toggleMuteAllMenu), keyEquivalent: ""))
+
+        let soundMenuItem = NSMenuItem(title: "Sounds", action: nil, keyEquivalent: "")
+        soundMenuItem.submenu = soundMenu
+        menu.addItem(soundMenuItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         if NSScreen.screens.count > 1 {
             let monitorMenu = NSMenu()
             for (idx, screen) in NSScreen.screens.enumerated() {
@@ -681,6 +734,28 @@ class CatView: NSView {
 
     @objc func switchMenu() { catWindow?.activateAntigravity() }
     @objc func takeStrollMenu() { startStroll() }
+
+    @objc func toggleSoundEffectsMenu() {
+        soundEffectsEnabled.toggle()
+        saveSettings()
+    }
+
+    @objc func toggleQuestionChimeMenu() {
+        questionChimeEnabled.toggle()
+        saveSettings()
+    }
+
+    @objc func toggleMuteAllMenu() {
+        if soundEffectsEnabled || questionChimeEnabled {
+            soundEffectsEnabled = false
+            questionChimeEnabled = false
+        } else {
+            soundEffectsEnabled = true
+            questionChimeEnabled = true
+        }
+        saveSettings()
+    }
+
     @objc func openSpritesMenu() { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: USER_SPRITES_DIR) }
     @objc func resetPositionMenu() { catWindow?.resetToDefaultPosition() }
     @objc func quitAppMenu() { NSApp.terminate(nil) }

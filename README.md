@@ -19,6 +19,10 @@ A native macOS ambient desktop companion that lives on your screen and reacts to
 - **Multi-Monitor Support**:
   - Drag the cat freely across all connected displays without hitting an invisible border.
   - Right-click the cat to open the context menu and use **Move to Screen** to teleport it between monitors with 1 click.
+- **Audio Feedback & Mute Controls**:
+  - Right-click the cat and open the **Sounds** submenu to customize audio feedback.
+  - Independent toggles for **Sound Effects** (working typing chimes and task completion) and **Question Chime** (alert ping when human input is requested).
+  - Quick **Mute All** / **Unmute All** option. Settings are automatically saved to `~/.desktop-pet/settings.json`.
 - **Ultra-Lightweight & Battery-Friendly**:
   - Native Swift + AppKit implementation.
   - Steady-state CPU usage < 0.7%, 0 disk I/O when idle.
