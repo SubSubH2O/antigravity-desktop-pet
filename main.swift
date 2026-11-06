@@ -212,8 +212,10 @@ class CatView: NSView {
     var initialWindowLocation: NSPoint = .zero
     var isDragging: Bool = false
 
-    var soundEffectsEnabled: Bool = true
-    var questionChimeEnabled: Bool = true
+    var typingSoundsEnabled: Bool = true
+    var completionChimeEnabled: Bool = true
+    var questionAlertEnabled: Bool = true
+    private var lastSettingsModTime: time_t = 0
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -234,10 +236,22 @@ class CatView: NSView {
 
     func loadSettings() {
         if FileManager.default.fileExists(atPath: SETTINGS_FILE) {
+            var statBuf = stat()
+            if stat(SETTINGS_FILE, &statBuf) == 0 {
+                lastSettingsModTime = statBuf.st_mtimespec.tv_sec
+            }
             if let data = try? Data(contentsOf: URL(fileURLWithPath: SETTINGS_FILE)),
                let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                if let se = dict["soundEffects"] as? Bool { soundEffectsEnabled = se }
-                if let qc = dict["questionChime"] as? Bool { questionChimeEnabled = qc }
+                if let ts = dict["typingSounds"] as? Bool { typingSoundsEnabled = ts }
+                else if let se = dict["soundEffects"] as? Bool { typingSoundsEnabled = se }
+
+                if let cc = dict["completionChime"] as? Bool { completionChimeEnabled = cc }
+                else if let se = dict["soundEffects"] as? Bool { completionChimeEnabled = se }
+
+                if let qa = dict["questionAlert"] as? Bool { questionAlertEnabled = qa }
+                else if let qc = dict["questionChime"] as? Bool { questionAlertEnabled = qc }
+
+                saveSettings()
             }
         } else {
             saveSettings()
@@ -246,11 +260,25 @@ class CatView: NSView {
 
     func saveSettings() {
         let dict: [String: Any] = [
-            "soundEffects": soundEffectsEnabled,
-            "questionChime": questionChimeEnabled
+            "typingSounds": typingSoundsEnabled,
+            "completionChime": completionChimeEnabled,
+            "questionAlert": questionAlertEnabled
         ]
         if let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted]) {
             try? data.write(to: URL(fileURLWithPath: SETTINGS_FILE))
+            var statBuf = stat()
+            if stat(SETTINGS_FILE, &statBuf) == 0 {
+                lastSettingsModTime = statBuf.st_mtimespec.tv_sec
+            }
+        }
+    }
+
+    func reloadSettingsIfNeeded() {
+        var statBuf = stat()
+        if stat(SETTINGS_FILE, &statBuf) == 0 {
+            if statBuf.st_mtimespec.tv_sec != lastSettingsModTime {
+                loadSettings()
+            }
         }
     }
 
@@ -339,17 +367,17 @@ class CatView: NSView {
 
         switch newState {
         case .question:
-            if questionChimeEnabled {
+            if questionAlertEnabled {
                 NSSound(named: "Ping")?.play()
             }
             lastActiveDate = Date()
         case .working:
-            if soundEffectsEnabled {
+            if typingSoundsEnabled {
                 NSSound(named: "Tink")?.play()
             }
             lastActiveDate = Date()
         case .idle:
-            if previousState == .working && soundEffectsEnabled {
+            if previousState == .working && completionChimeEnabled {
                 NSSound(named: "Glass")?.play()
             }
             lastActiveDate = Date()
@@ -561,6 +589,7 @@ class CatView: NSView {
     private var cachedStateStr: String = "idle"
 
     private func checkLiveState() {
+        reloadSettingsIfNeeded()
         var statBuf = stat()
         let ret = stat(LIVE_STATE_FILE, &statBuf)
         if ret == 0 {
@@ -677,25 +706,43 @@ class CatView: NSView {
         lastActiveDate = Date()
         cancelStroll()
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Switch to Antigravity", action: #selector(switchMenu), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Take a Stroll", action: #selector(takeStrollMenu), keyEquivalent: "s"))
+
+        func addItem(_ title: String, action: Selector?, key: String = "", target: AnyObject? = nil) -> NSMenuItem {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            item.target = target
+            menu.addItem(item)
+            return item
+        }
+
+        _ = addItem("Switch to Antigravity", action: #selector(switchMenu), target: self)
+        _ = addItem("Take a Stroll", action: #selector(takeStrollMenu), key: "s", target: self)
         menu.addItem(NSMenuItem.separator())
 
         // Sounds Submenu
         let soundMenu = NSMenu()
-        let seItem = NSMenuItem(title: "Sound Effects", action: #selector(toggleSoundEffectsMenu), keyEquivalent: "")
-        seItem.state = soundEffectsEnabled ? .on : .off
-        soundMenu.addItem(seItem)
 
-        let qcItem = NSMenuItem(title: "Question Chime", action: #selector(toggleQuestionChimeMenu), keyEquivalent: "")
-        qcItem.state = questionChimeEnabled ? .on : .off
-        soundMenu.addItem(qcItem)
+        let completionItem = NSMenuItem(title: "Task Completion Chime", action: #selector(toggleCompletionChimeMenu), keyEquivalent: "")
+        completionItem.target = self
+        completionItem.state = completionChimeEnabled ? .on : .off
+        soundMenu.addItem(completionItem)
+
+        let questionItem = NSMenuItem(title: "Question Alert", action: #selector(toggleQuestionAlertMenu), keyEquivalent: "")
+        questionItem.target = self
+        questionItem.state = questionAlertEnabled ? .on : .off
+        soundMenu.addItem(questionItem)
+
+        let typingItem = NSMenuItem(title: "Typing Sounds", action: #selector(toggleTypingSoundsMenu), keyEquivalent: "")
+        typingItem.target = self
+        typingItem.state = typingSoundsEnabled ? .on : .off
+        soundMenu.addItem(typingItem)
 
         soundMenu.addItem(NSMenuItem.separator())
 
-        let isAnySoundOn = soundEffectsEnabled || questionChimeEnabled
+        let isAnySoundOn = completionChimeEnabled || questionAlertEnabled || typingSoundsEnabled
         let muteAllTitle = isAnySoundOn ? "Mute All" : "Unmute All"
-        soundMenu.addItem(NSMenuItem(title: muteAllTitle, action: #selector(toggleMuteAllMenu), keyEquivalent: ""))
+        let muteItem = NSMenuItem(title: muteAllTitle, action: #selector(toggleMuteAllMenu), keyEquivalent: "")
+        muteItem.target = self
+        soundMenu.addItem(muteItem)
 
         let soundMenuItem = NSMenuItem(title: "Sounds", action: nil, keyEquivalent: "")
         soundMenuItem.submenu = soundMenu
@@ -709,6 +756,7 @@ class CatView: NSView {
                 let name = screen.localizedName
                 let isCurrent = (catWindow?.screen == screen)
                 let item = NSMenuItem(title: "\(name)", action: #selector(selectMonitorMenu(_:)), keyEquivalent: "")
+                item.target = self
                 item.tag = idx
                 item.state = isCurrent ? .on : .off
                 monitorMenu.addItem(item)
@@ -718,10 +766,10 @@ class CatView: NSView {
             menu.addItem(monitorMenuItem)
         }
 
-        menu.addItem(NSMenuItem(title: "Reset Position to Corner", action: #selector(resetPositionMenu), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Open Sprites Folder...", action: #selector(openSpritesMenu), keyEquivalent: ""))
+        _ = addItem("Reset Position to Corner", action: #selector(resetPositionMenu), target: self)
+        _ = addItem("Open Sprites Folder...", action: #selector(openSpritesMenu), target: self)
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit Desktop Pet", action: #selector(quitAppMenu), keyEquivalent: "q"))
+        _ = addItem("Quit Desktop Pet", action: #selector(quitAppMenu), key: "q", target: self)
         NSMenu.popUpContextMenu(menu, with: event, for: self)
     }
 
@@ -735,23 +783,30 @@ class CatView: NSView {
     @objc func switchMenu() { catWindow?.activateAntigravity() }
     @objc func takeStrollMenu() { startStroll() }
 
-    @objc func toggleSoundEffectsMenu() {
-        soundEffectsEnabled.toggle()
+    @objc func toggleCompletionChimeMenu() {
+        completionChimeEnabled.toggle()
         saveSettings()
     }
 
-    @objc func toggleQuestionChimeMenu() {
-        questionChimeEnabled.toggle()
+    @objc func toggleQuestionAlertMenu() {
+        questionAlertEnabled.toggle()
+        saveSettings()
+    }
+
+    @objc func toggleTypingSoundsMenu() {
+        typingSoundsEnabled.toggle()
         saveSettings()
     }
 
     @objc func toggleMuteAllMenu() {
-        if soundEffectsEnabled || questionChimeEnabled {
-            soundEffectsEnabled = false
-            questionChimeEnabled = false
+        if completionChimeEnabled || questionAlertEnabled || typingSoundsEnabled {
+            completionChimeEnabled = false
+            questionAlertEnabled = false
+            typingSoundsEnabled = false
         } else {
-            soundEffectsEnabled = true
-            questionChimeEnabled = true
+            completionChimeEnabled = true
+            questionAlertEnabled = true
+            typingSoundsEnabled = true
         }
         saveSettings()
     }
