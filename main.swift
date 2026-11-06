@@ -151,6 +151,7 @@ class CatWindow: NSPanel {
             for screen in NSScreen.screens {
                 if screen.frame.contains(point) {
                     self.setFrameOrigin(point)
+                    catView?.territoryAnchor = point
                     return
                 }
             }
@@ -164,7 +165,9 @@ class CatWindow: NSPanel {
         let petSize: CGFloat = 86.0
         let x = visible.maxX - petSize - 24.0
         let y = visible.minY + 40.0
-        self.setFrameOrigin(NSPoint(x: x, y: y))
+        let point = NSPoint(x: x, y: y)
+        self.setFrameOrigin(point)
+        catView?.territoryAnchor = point
         savePosition()
     }
 
@@ -173,7 +176,9 @@ class CatWindow: NSPanel {
         let petSize: CGFloat = 86.0
         let x = visible.maxX - petSize - 24.0
         let y = visible.minY + 40.0
-        self.setFrameOrigin(NSPoint(x: x, y: y))
+        let point = NSPoint(x: x, y: y)
+        self.setFrameOrigin(point)
+        catView?.territoryAnchor = point
         savePosition()
     }
 
@@ -361,7 +366,9 @@ class CatView: NSView {
         if newState != .idle {
             cancelStroll()
         } else {
-            homePosition = catWindow?.frame.origin ?? homePosition
+            if territoryAnchor == .zero {
+                territoryAnchor = catWindow?.frame.origin ?? .zero
+            }
             nextStrollTime = Date().addingTimeInterval(Double.random(in: 30.0...50.0))
         }
 
@@ -436,9 +443,10 @@ class CatView: NSView {
         imageView.image = frames[frameIndex]
     }
 
-    // MARK: - Local Roaming & Strolling Engine (Smooth 2D Autonomous Wandering)
+    // MARK: - Local Roaming Territory Engine
     var isWalking: Bool = false
-    var homePosition: NSPoint = .zero
+    var territoryAnchor: NSPoint = .zero
+    let territoryRadius: CGFloat = 180.0
     var strollTimer: Timer?
     private var currentWalkUUID: UUID? = nil
     private var nextStrollTime: Date = Date().addingTimeInterval(35.0)
@@ -489,33 +497,44 @@ class CatView: NSView {
     func startStroll() {
         guard let window = catWindow, currentState == .idle, !isDragging, !isWalking else { return }
 
+        if territoryAnchor == .zero {
+            territoryAnchor = window.frame.origin
+        }
+
         let screen = window.screen ?? NSScreen.main ?? NSScreen.screens[0]
         let visible = screen.visibleFrame
         let petSize: CGFloat = 86.0
 
-        let minX = visible.minX + 24.0
-        let maxX = visible.maxX - petSize - 24.0
-        let minY = visible.minY + 24.0
-        let maxY = visible.maxY - petSize - 24.0
+        // Strict boundary: territory bounding box clamped to visible display area
+        let minX = max(visible.minX + 24.0, territoryAnchor.x - territoryRadius)
+        let maxX = min(visible.maxX - petSize - 24.0, territoryAnchor.x + territoryRadius)
+        let minY = max(visible.minY + 24.0, territoryAnchor.y - territoryRadius)
+        let maxY = min(visible.maxY - petSize - 24.0, territoryAnchor.y + territoryRadius)
 
         let curX = window.frame.origin.x
         let curY = window.frame.origin.y
 
-        // Pick random angle and distance (80 to 170 px)
+        // Pick random hop distance (60 to 130 px)
+        let distance = CGFloat.random(in: 60.0...130.0)
+
+        // Check if near territory boundaries: if so, softly turn back toward territoryAnchor
         var angle = Double.random(in: 0.0...(2.0 * .pi))
-        let distance = CGFloat.random(in: 80.0...170.0)
+        let distFromAnchor = hypot(curX - territoryAnchor.x, curY - territoryAnchor.y)
+
+        if distFromAnchor > territoryRadius * 0.65 || curX < minX + 30 || curX > maxX - 30 || curY < minY + 30 || curY > maxY - 30 {
+            let inwardAngle = atan2(Double(territoryAnchor.y - curY), Double(territoryAnchor.x - curX))
+            angle = inwardAngle + Double.random(in: -(.pi / 3.0)...(.pi / 3.0))
+        }
 
         var rawX = curX + distance * CGFloat(cos(angle))
         var rawY = curY + distance * CGFloat(sin(angle))
 
-        // If wandering out of screen boundaries, turn inward towards center of display
-        if rawX < minX || rawX > maxX || rawY < minY || rawY > maxY {
-            let centerX = (minX + maxX) / 2.0
-            let centerY = (minY + maxY) / 2.0
-            let inwardAngle = atan2(Double(centerY - curY), Double(centerX - curX))
-            angle = inwardAngle + Double.random(in: -(.pi / 4.0)...(.pi / 4.0))
-            rawX = curX + distance * CGFloat(cos(angle))
-            rawY = curY + distance * CGFloat(sin(angle))
+        // Ensure target stays within territory circle
+        let targetDistFromAnchor = hypot(rawX - territoryAnchor.x, rawY - territoryAnchor.y)
+        if targetDistFromAnchor > territoryRadius {
+            let scale = territoryRadius / targetDistFromAnchor
+            rawX = territoryAnchor.x + (rawX - territoryAnchor.x) * scale
+            rawY = territoryAnchor.y + (rawY - territoryAnchor.y) * scale
         }
 
         let targetX = max(minX, min(rawX, maxX))
@@ -523,7 +542,7 @@ class CatView: NSView {
         let targetPoint = NSPoint(x: targetX, y: targetY)
 
         let travelDist = hypot(targetPoint.x - curX, targetPoint.y - curY)
-        if travelDist < 35.0 { return }
+        if travelDist < 25.0 { return }
 
         isWalking = true
         animStep = 0
@@ -533,7 +552,7 @@ class CatView: NSView {
         walkTo(targetPoint: targetPoint, speed: 50.0) { [weak self] in
             guard let self = self, self.isWalking, self.currentState == .idle else { return }
 
-            // Reached destination: settle down here as new spot!
+            // Reached destination: settle down here as new spot within territory
             self.isWalking = false
             self.animStep = 0
             self.updateSprite()
@@ -687,7 +706,7 @@ class CatView: NSView {
         } else {
             catWindow?.settleOnNearestScreen()
             catWindow?.savePosition()
-            homePosition = catWindow?.frame.origin ?? homePosition
+            territoryAnchor = catWindow?.frame.origin ?? territoryAnchor
         }
         isDragging = false
     }
