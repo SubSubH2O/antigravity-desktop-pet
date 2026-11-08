@@ -2,6 +2,8 @@ import Cocoa
 import Foundation
 
 // MARK: - Constants & Config
+let USER_AVATARS_DIR = NSString(string: "~/.desktop-pet/avatars").expandingTildeInPath
+let PLUGIN_AVATARS_DIR = NSString(string: "~/.gemini/config/plugins/desktop-pet/avatars").expandingTildeInPath
 let USER_SPRITES_DIR = NSString(string: "~/.desktop-pet/sprites").expandingTildeInPath
 let PLUGIN_SPRITES_DIR = NSString(string: "~/.gemini/config/plugins/desktop-pet/sprites").expandingTildeInPath
 let LIVE_STATE_FILE = NSString(string: "~/.desktop-pet/live_state.json").expandingTildeInPath
@@ -217,6 +219,7 @@ class CatView: NSView {
     var initialWindowLocation: NSPoint = .zero
     var isDragging: Bool = false
 
+    var currentAvatar: String = "Cat"
     var typingSoundsEnabled: Bool = true
     var completionChimeEnabled: Bool = true
     var questionAlertEnabled: Bool = true
@@ -247,6 +250,8 @@ class CatView: NSView {
             }
             if let data = try? Data(contentsOf: URL(fileURLWithPath: SETTINGS_FILE)),
                let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let av = dict["avatar"] as? String { currentAvatar = av }
+
                 if let ts = dict["typingSounds"] as? Bool { typingSoundsEnabled = ts }
                 else if let se = dict["soundEffects"] as? Bool { typingSoundsEnabled = se }
 
@@ -265,6 +270,7 @@ class CatView: NSView {
 
     func saveSettings() {
         let dict: [String: Any] = [
+            "avatar": currentAvatar,
             "typingSounds": typingSoundsEnabled,
             "completionChime": completionChimeEnabled,
             "questionAlert": questionAlertEnabled
@@ -282,7 +288,12 @@ class CatView: NSView {
         var statBuf = stat()
         if stat(SETTINGS_FILE, &statBuf) == 0 {
             if statBuf.st_mtimespec.tv_sec != lastSettingsModTime {
+                let previousAvatar = currentAvatar
                 loadSettings()
+                if currentAvatar != previousAvatar {
+                    loadAllSprites()
+                    updateSprite()
+                }
             }
         }
     }
@@ -291,15 +302,100 @@ class CatView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    private func checkAndSliceSpritesheetIfNeeded(in dirURL: URL) {
+        let idle1 = dirURL.appendingPathComponent("idle_1.png")
+        if FileManager.default.fileExists(atPath: idle1.path) { return }
+
+        let sheetURL = dirURL.appendingPathComponent("spritesheet.png")
+        guard FileManager.default.fileExists(atPath: sheetURL.path),
+              let sheetImg = NSImage(contentsOf: sheetURL),
+              let cgImage = sheetImg.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            return
+        }
+
+        let cellW = cgImage.width / 8
+        let cellH = cgImage.height / 5
+        guard cellW > 0, cellH > 0 else { return }
+
+        let states = ["idle", "walking", "working", "question", "sleeping"]
+        for (r, state) in states.enumerated() {
+            for c in 0..<8 {
+                let cropRect = CGRect(x: c * cellW, y: r * cellH, width: cellW, height: cellH)
+                if let cropped = cgImage.cropping(to: cropRect) {
+                    let rep = NSBitmapImageRep(cgImage: cropped)
+                    if let pngData = rep.representation(using: .png, properties: [:]) {
+                        let outURL = dirURL.appendingPathComponent("\(state)_\(c + 1).png")
+                        try? pngData.write(to: outURL)
+                    }
+                }
+            }
+        }
+    }
+
+    func availableAvatars() -> [String] {
+        var names = Set<String>()
+
+        let pluginAvatarsURL = URL(fileURLWithPath: PLUGIN_AVATARS_DIR)
+        if let items = try? FileManager.default.contentsOfDirectory(atPath: pluginAvatarsURL.path) {
+            for item in items where !item.hasPrefix(".") {
+                var isDir: ObjCBool = false
+                let subURL = pluginAvatarsURL.appendingPathComponent(item)
+                if FileManager.default.fileExists(atPath: subURL.path, isDirectory: &isDir), isDir.boolValue {
+                    checkAndSliceSpritesheetIfNeeded(in: subURL)
+                    names.insert(item)
+                }
+            }
+        }
+
+        let userAvatarsURL = URL(fileURLWithPath: USER_AVATARS_DIR)
+        if let items = try? FileManager.default.contentsOfDirectory(atPath: userAvatarsURL.path) {
+            for item in items where !item.hasPrefix(".") {
+                var isDir: ObjCBool = false
+                let subURL = userAvatarsURL.appendingPathComponent(item)
+                if FileManager.default.fileExists(atPath: subURL.path, isDirectory: &isDir), isDir.boolValue {
+                    checkAndSliceSpritesheetIfNeeded(in: subURL)
+                    names.insert(item)
+                }
+            }
+        }
+
+        if names.isEmpty {
+            names.insert("Cat")
+        }
+
+        return names.sorted { a, b in
+            if a == "Cat" { return true }
+            if b == "Cat" { return false }
+            if a == "Mew" { return true }
+            if b == "Mew" { return false }
+            return a.localizedCaseInsensitiveCompare(b) == .orderedAscending
+        }
+    }
+
     private func loadAllSprites() {
         func getImg(_ name: String) -> NSImage? {
-            let userURL = URL(fileURLWithPath: USER_SPRITES_DIR).appendingPathComponent(name)
-            if FileManager.default.fileExists(atPath: userURL.path), let img = NSImage(contentsOf: userURL) {
+            // 1. User avatar directory: ~/.desktop-pet/avatars/<avatar>/<name>
+            let userAvatarURL = URL(fileURLWithPath: USER_AVATARS_DIR).appendingPathComponent(currentAvatar).appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: userAvatarURL.path), let img = NSImage(contentsOf: userAvatarURL) {
                 return img
             }
-            let pluginURL = URL(fileURLWithPath: PLUGIN_SPRITES_DIR).appendingPathComponent(name)
-            if FileManager.default.fileExists(atPath: pluginURL.path), let img = NSImage(contentsOf: pluginURL) {
+
+            // 2. Plugin avatar directory: <plugin>/avatars/<avatar>/<name>
+            let pluginAvatarURL = URL(fileURLWithPath: PLUGIN_AVATARS_DIR).appendingPathComponent(currentAvatar).appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: pluginAvatarURL.path), let img = NSImage(contentsOf: pluginAvatarURL) {
                 return img
+            }
+
+            // 3. Fallback for "Cat" to legacy sprites directory
+            if currentAvatar == "Cat" || currentAvatar.lowercased() == "default" {
+                let userURL = URL(fileURLWithPath: USER_SPRITES_DIR).appendingPathComponent(name)
+                if FileManager.default.fileExists(atPath: userURL.path), let img = NSImage(contentsOf: userURL) {
+                    return img
+                }
+                let pluginURL = URL(fileURLWithPath: PLUGIN_SPRITES_DIR).appendingPathComponent(name)
+                if FileManager.default.fileExists(atPath: pluginURL.path), let img = NSImage(contentsOf: pluginURL) {
+                    return img
+                }
             }
             return nil
         }
@@ -729,6 +825,25 @@ class CatView: NSView {
         _ = addItem("Take a Stroll", action: #selector(takeStrollMenu), key: "s", target: self)
         menu.addItem(NSMenuItem.separator())
 
+        // Avatar Submenu
+        let avatarMenu = NSMenu()
+        let avatars = availableAvatars()
+        for name in avatars {
+            let item = NSMenuItem(title: name, action: #selector(selectAvatarMenu(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = name
+            item.state = (name == currentAvatar) ? .on : .off
+            avatarMenu.addItem(item)
+        }
+        avatarMenu.addItem(NSMenuItem.separator())
+        let openAvatarsItem = NSMenuItem(title: "Open Avatars Folder...", action: #selector(openAvatarsMenu), keyEquivalent: "")
+        openAvatarsItem.target = self
+        avatarMenu.addItem(openAvatarsItem)
+
+        let avatarMenuItem = NSMenuItem(title: "Avatar", action: nil, keyEquivalent: "")
+        avatarMenuItem.submenu = avatarMenu
+        menu.addItem(avatarMenuItem)
+
         // Sounds Submenu
         let soundMenu = NSMenu()
 
@@ -782,6 +897,27 @@ class CatView: NSView {
         menu.addItem(NSMenuItem.separator())
         _ = addItem("Quit Desktop Pet", action: #selector(quitAppMenu), key: "q", target: self)
         NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
+
+    @objc func selectAvatarMenu(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        changeAvatar(to: name)
+    }
+
+    func changeAvatar(to name: String, save: Bool = true) {
+        currentAvatar = name
+        if save {
+            saveSettings()
+        }
+        loadAllSprites()
+        animStep = 0
+        updateSprite()
+    }
+
+    @objc func openAvatarsMenu() {
+        let url = URL(fileURLWithPath: USER_AVATARS_DIR)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: USER_AVATARS_DIR)
     }
 
     @objc func selectMonitorMenu(_ sender: NSMenuItem) {
