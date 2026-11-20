@@ -42,7 +42,7 @@
     "Stop": [
       {
         "type": "command",
-        "command": "./scripts/set_state.sh stop",
+        "command": "./scripts/set_state.sh idle",
         "timeout": 5
       }
     ]

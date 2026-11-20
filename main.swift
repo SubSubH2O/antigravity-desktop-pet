@@ -470,9 +470,7 @@ class CatView: NSView {
 
         switch newState {
         case .question:
-            if previousState == .working && completionChimeEnabled {
-                NSSound(named: "Glass")?.play()
-            } else if questionAlertEnabled {
+            if questionAlertEnabled {
                 NSSound(named: "Ping")?.play()
             }
             lastActiveDate = Date()
@@ -701,7 +699,16 @@ class CatView: NSView {
 
     private func checkCliConfirmation() -> Bool {
         var statBuf = stat()
-        guard stat(CLI_LOG_PATH, &statBuf) == 0 else { return false }
+        guard stat(CLI_LOG_PATH, &statBuf) == 0 else {
+            isCliAwaitingConfirmation = false
+            return false
+        }
+        // Only consider if cli.log was modified within the last 60 seconds
+        let nowSec = time(nil)
+        if nowSec - statBuf.st_mtimespec.tv_sec > 60 {
+            isCliAwaitingConfirmation = false
+            return false
+        }
         let currentModTime = statBuf.st_mtimespec.tv_sec
         if currentModTime != lastCliLogModTime {
             lastCliLogModTime = currentModTime

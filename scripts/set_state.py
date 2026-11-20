@@ -29,12 +29,7 @@ if target_state == "pre_tool":
 elif target_state == "post_tool_question":
     target_state = "working"
 elif target_state in ("stop", "idle"):
-    term_reason = hook_payload.get("terminationReason", "")
-    # When agent finishes turn normally (NO_TOOL_CALL), the CLI/UI is awaiting user input!
-    if term_reason == "NO_TOOL_CALL" or not term_reason:
-        target_state = "question"
-    else:
-        target_state = "idle"
+    target_state = "idle"
 
 # Load existing state
 existing_data = {
