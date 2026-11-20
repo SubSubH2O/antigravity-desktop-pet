@@ -4,7 +4,6 @@ import json
 import time
 
 STATE_FILE = os.path.expanduser("~/.desktop-pet/live_state.json")
-TMP_FILE = STATE_FILE + ".tmp"
 
 target_state = sys.argv[1] if len(sys.argv) > 1 else "idle"
 
@@ -29,6 +28,13 @@ if target_state == "pre_tool":
         target_state = "working"
 elif target_state == "post_tool_question":
     target_state = "working"
+elif target_state in ("stop", "idle"):
+    term_reason = hook_payload.get("terminationReason", "")
+    # When agent finishes turn normally (NO_TOOL_CALL), the CLI/UI is awaiting user input!
+    if term_reason == "NO_TOOL_CALL" or not term_reason:
+        target_state = "question"
+    else:
+        target_state = "idle"
 
 # Load existing state
 existing_data = {
@@ -57,9 +63,8 @@ if target_state in ("working", "question"):
     conversations[convo_id] = target_state
     conversation_times[convo_id] = now
 elif target_state == "idle":
-    if convo_id in conversations:
-        conversations[convo_id] = "idle"
-        conversation_times[convo_id] = now
+    conversations[convo_id] = "idle"
+    conversation_times[convo_id] = now
 
 # Prune conversations inactive for over 15 minutes or idle for over 3 minutes
 cleaned_conversations = {}
@@ -77,13 +82,12 @@ conversations = cleaned_conversations
 conversation_times = cleaned_times
 
 # Determine overall state by priority:
-# Priority 1: question (if ANY conversation needs input)
-# Priority 2: working (if ANY conversation is working)
+# Priority 1: question (if ANY conversation needs input / is awaiting user response)
+# Priority 2: working (if ANY conversation is actively working)
 # Priority 3: idle (all finished)
 overall_state = "idle"
 waiting_convo_id = None
 
-# Check for question first
 for cid, st in conversations.items():
     if st == "question":
         overall_state = "question"
@@ -105,13 +109,19 @@ output_data = {
 }
 
 os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-with open(TMP_FILE, "w") as fp:
-    json.dump(output_data, fp)
-os.replace(TMP_FILE, STATE_FILE)
+tmp_file = f"{STATE_FILE}.{os.getpid()}_{time.time_ns()}.tmp"
+try:
+    with open(tmp_file, "w") as fp:
+        json.dump(output_data, fp)
+    os.replace(tmp_file, STATE_FILE)
+except Exception:
+    if os.path.exists(tmp_file):
+        try:
+            os.remove(tmp_file)
+        except Exception:
+            pass
 
 # Required stdout contract:
-# PreToolUse requires {"decision": "allow"}
-# PreInvocation, PostToolUse, and Stop require {}
 if len(sys.argv) > 1 and sys.argv[1] == "pre_tool":
     print(json.dumps({"decision": "allow"}))
 else:

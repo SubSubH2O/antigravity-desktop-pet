@@ -470,7 +470,9 @@ class CatView: NSView {
 
         switch newState {
         case .question:
-            if questionAlertEnabled {
+            if previousState == .working && completionChimeEnabled {
+                NSSound(named: "Glass")?.play()
+            } else if questionAlertEnabled {
                 NSSound(named: "Ping")?.play()
             }
             lastActiveDate = Date()
@@ -692,6 +694,40 @@ class CatView: NSView {
     // MARK: - State Watcher with POSIX stat() Caching & 10-Minute Sleep Rule
     private var lastFileModTime: time_t = 0
     private var cachedStateStr: String = "idle"
+    let CLI_LOG_PATH = NSString(string: "~/.gemini/antigravity-cli/cli.log").expandingTildeInPath
+    private var lastCliLogModTime: time_t = 0
+    private var isCliAwaitingConfirmation: Bool = false
+    private var questionStateDate: Date? = nil
+
+    private func checkCliConfirmation() -> Bool {
+        var statBuf = stat()
+        guard stat(CLI_LOG_PATH, &statBuf) == 0 else { return false }
+        let currentModTime = statBuf.st_mtimespec.tv_sec
+        if currentModTime != lastCliLogModTime {
+            lastCliLogModTime = currentModTime
+            if let fileHandle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: CLI_LOG_PATH)) {
+                defer { try? fileHandle.close() }
+                let fileSize = fileHandle.seekToEndOfFile()
+                let readLen = min(fileSize, 4096)
+                fileHandle.seek(toFileOffset: fileSize - readLen)
+                let data = fileHandle.readDataToEndOfFile()
+                if let str = String(data: data, encoding: .utf8) {
+                    let rangeSurface = str.range(of: "Surfacing tool confirmation:", options: .backwards)
+                    let rangeRespond = str.range(of: "Responding to tool confirmation:", options: .backwards)
+                    if let s = rangeSurface {
+                        if let r = rangeRespond {
+                            isCliAwaitingConfirmation = (s.lowerBound > r.lowerBound)
+                        } else {
+                            isCliAwaitingConfirmation = true
+                        }
+                    } else {
+                        isCliAwaitingConfirmation = false
+                    }
+                }
+            }
+        }
+        return isCliAwaitingConfirmation
+    }
 
     private func checkLiveState() {
         reloadSettingsIfNeeded()
@@ -711,14 +747,26 @@ class CatView: NSView {
             }
         }
 
+        let isToolConfirm = checkCliConfirmation()
         let stateStr = cachedStateStr
-        if stateStr == "working" {
+
+        if isToolConfirm || stateStr == "question" {
+            self.lastActiveDate = Date()
+            if questionStateDate == nil {
+                questionStateDate = Date()
+            }
+            // If in question state for over 90 seconds without activity, gently relax to idle
+            if !isToolConfirm && Date().timeIntervalSince(questionStateDate!) > 90.0 {
+                self.setState(.idle)
+            } else {
+                self.setState(.question)
+            }
+        } else if stateStr == "working" {
+            questionStateDate = nil
             self.lastActiveDate = Date()
             self.setState(.working)
-        } else if stateStr == "question" {
-            self.lastActiveDate = Date()
-            self.setState(.question)
         } else {
+            questionStateDate = nil
             let inactiveSeconds = Date().timeIntervalSince(self.lastActiveDate)
 
             if inactiveSeconds >= SLEEP_INACTIVITY_SECONDS {
@@ -728,9 +776,7 @@ class CatView: NSView {
                     self.scheduleNextFrame()
                 }
             } else {
-                if self.currentState == .sleeping {
-                    self.setState(.idle)
-                } else if self.currentState != .idle {
+                if self.currentState == .sleeping || self.currentState != .idle {
                     self.setState(.idle)
                 }
             }
