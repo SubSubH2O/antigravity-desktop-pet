@@ -10,7 +10,7 @@ if ! pgrep -fl DesktopPetCat >/dev/null 2>&1; then
         swiftc -O -o "$BIN" "$SRC" 2>&1
     fi
     if [ -x "$BIN" ]; then
-        nohup "$BIN" >/dev/null 2>&1 &
+        (nohup "$BIN" >/dev/null 2>&1 &)
     fi
 fi
 

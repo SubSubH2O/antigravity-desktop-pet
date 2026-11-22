@@ -23,7 +23,6 @@ enum PetState: String {
 // MARK: - App Delegate
 class AppDelegate: NSObject, NSApplicationDelegate {
     var catWindow: CatWindow!
-    var watchdogTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -32,25 +31,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         catWindow.makeKeyAndOrderFront(nil)
 
         setupEventListeners()
-        startWatchdog()
     }
 
     private func setupEventListeners() {
-        // Event-driven termination: instant exit when Antigravity closes, 0 CPU polling
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didTerminateApplicationNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            let isAntigravityRunning = NSWorkspace.shared.runningApplications.contains {
-                $0.localizedName?.lowercased().contains("antigravity") == true ||
-                $0.bundleIdentifier?.lowercased().contains("antigravity") == true
-            }
-            if !isAntigravityRunning {
-                NSApp.terminate(nil)
-            }
-        }
-
         // Battery saver: pause animation timer when displays go to sleep
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.screensDidSleepNotification,
@@ -66,19 +49,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { [weak self] _ in
             self?.catWindow?.catView?.resumeAnimation()
-        }
-    }
-
-    private func startWatchdog() {
-        // Relaxed backup watchdog (every 15s instead of 3s)
-        watchdogTimer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: true) { _ in
-            let isAntigravityRunning = NSWorkspace.shared.runningApplications.contains {
-                $0.localizedName?.lowercased().contains("antigravity") == true ||
-                $0.bundleIdentifier?.lowercased().contains("antigravity") == true
-            }
-            if !isAntigravityRunning {
-                NSApp.terminate(nil)
-            }
         }
     }
 }

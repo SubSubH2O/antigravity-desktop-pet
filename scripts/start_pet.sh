@@ -13,7 +13,7 @@ fi
 
 # 2. Check if process is already running; start if not
 if ! pgrep -fl DesktopPetCat >/dev/null 2>&1; then
-    nohup "$BIN" >/dev/null 2>&1 &
+    (nohup "$BIN" >/dev/null 2>&1 &)
 fi
 
 # Output required JSON to stdout for Antigravity hook system
