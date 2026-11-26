@@ -61,12 +61,14 @@ elif target_state == "idle":
     conversations[convo_id] = "idle"
     conversation_times[convo_id] = now
 
-# Prune conversations inactive for over 15 minutes or idle for over 3 minutes
+# Prune stale conversations: working > 2 min (e.g. cancelled/killed), question > 5 min, idle > 3 min
 cleaned_conversations = {}
 cleaned_times = {}
 for cid, st in conversations.items():
     last_seen = conversation_times.get(cid, now)
-    if now - last_seen > 900:
+    if st == "working" and (now - last_seen > 120):
+        continue
+    if st == "question" and (now - last_seen > 300):
         continue
     if st == "idle" and (now - last_seen > 180):
         continue

@@ -662,18 +662,51 @@ class CatView: NSView {
     // MARK: - State Watcher with POSIX stat() Caching & 10-Minute Sleep Rule
     private var lastFileModTime: time_t = 0
     private var cachedStateStr: String = "idle"
-    let CLI_LOG_PATH = NSString(string: "~/.gemini/antigravity-cli/cli.log").expandingTildeInPath
+    let CLI_LOG_DIR = NSString(string: "~/.gemini/antigravity-cli/log").expandingTildeInPath
     private var lastCliLogModTime: time_t = 0
+    private var lastCliLogScanTime: time_t = 0
+    private var activeCliLogPath: String? = nil
     private var isCliAwaitingConfirmation: Bool = false
     private var questionStateDate: Date? = nil
 
+    private func resolveActiveCliLogPath() -> String? {
+        let nowSec = time(nil)
+        if nowSec - lastCliLogScanTime < 5, let cached = activeCliLogPath {
+            return cached
+        }
+        lastCliLogScanTime = nowSec
+
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: CLI_LOG_DIR) else {
+            return nil
+        }
+        var newestPath: String? = nil
+        var newestMtime: time_t = 0
+        for file in files where file.hasPrefix("cli-") && file.hasSuffix(".log") {
+            let fullPath = (CLI_LOG_DIR as NSString).appendingPathComponent(file)
+            var statBuf = stat()
+            if stat(fullPath, &statBuf) == 0 && statBuf.st_mtimespec.tv_sec > newestMtime {
+                newestMtime = statBuf.st_mtimespec.tv_sec
+                newestPath = fullPath
+            }
+        }
+        if newestPath != activeCliLogPath {
+            activeCliLogPath = newestPath
+            lastCliLogModTime = 0
+        }
+        return activeCliLogPath
+    }
+
     private func checkCliConfirmation() -> Bool {
-        var statBuf = stat()
-        guard stat(CLI_LOG_PATH, &statBuf) == 0 else {
+        guard let logPath = resolveActiveCliLogPath() else {
             isCliAwaitingConfirmation = false
             return false
         }
-        // Only consider if cli.log was modified within the last 60 seconds
+        var statBuf = stat()
+        guard stat(logPath, &statBuf) == 0 else {
+            isCliAwaitingConfirmation = false
+            return false
+        }
+        // Only consider if the active cli log was modified within the last 60 seconds
         let nowSec = time(nil)
         if nowSec - statBuf.st_mtimespec.tv_sec > 60 {
             isCliAwaitingConfirmation = false
@@ -682,18 +715,20 @@ class CatView: NSView {
         let currentModTime = statBuf.st_mtimespec.tv_sec
         if currentModTime != lastCliLogModTime {
             lastCliLogModTime = currentModTime
-            if let fileHandle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: CLI_LOG_PATH)) {
+            if let fileHandle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: logPath)) {
                 defer { try? fileHandle.close() }
                 let fileSize = fileHandle.seekToEndOfFile()
-                let readLen = min(fileSize, 4096)
+                let readLen = min(fileSize, 8192)
                 fileHandle.seek(toFileOffset: fileSize - readLen)
                 let data = fileHandle.readDataToEndOfFile()
                 if let str = String(data: data, encoding: .utf8) {
                     let rangeSurface = str.range(of: "Surfacing tool confirmation:", options: .backwards)
                     let rangeRespond = str.range(of: "Responding to tool confirmation:", options: .backwards)
+                    let rangeCancel = str.range(of: "CancelCascadeInvocation", options: .backwards)
                     if let s = rangeSurface {
-                        if let r = rangeRespond {
-                            isCliAwaitingConfirmation = (s.lowerBound > r.lowerBound)
+                        let clearedAt = [rangeRespond?.lowerBound, rangeCancel?.lowerBound].compactMap { $0 }.max()
+                        if let c = clearedAt {
+                            isCliAwaitingConfirmation = (s.lowerBound > c)
                         } else {
                             isCliAwaitingConfirmation = true
                         }
@@ -724,8 +759,10 @@ class CatView: NSView {
             }
         }
 
+        let nowSec = time(nil)
+        let isStateStale = (lastFileModTime > 0) && (nowSec - lastFileModTime > 120)
         let isToolConfirm = checkCliConfirmation()
-        let stateStr = cachedStateStr
+        let stateStr = (isStateStale && cachedStateStr == "working") ? "idle" : cachedStateStr
 
         if isToolConfirm || stateStr == "question" {
             self.lastActiveDate = Date()
