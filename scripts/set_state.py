@@ -20,14 +20,8 @@ except Exception:
 convo_id = hook_payload.get("conversationId", "default")
 tool_name = hook_payload.get("toolCall", {}).get("name", "")
 
-# Determine actual target state
-is_command_tool = tool_name in (
-    "run_command", "bash", "Bash", "sh", "terminal", "terminal_command",
-    "execute_command", "shell_command"
-)
-
 if target_state == "pre_tool":
-    if tool_name == "ask_question" or is_command_tool:
+    if tool_name == "ask_question":
         target_state = "question"
     else:
         target_state = "working"
