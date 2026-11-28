@@ -723,7 +723,9 @@ class CatView: NSView {
                 let data = fileHandle.readDataToEndOfFile()
                 if let str = String(data: data, encoding: .utf8) {
                     let rangeSurface = str.range(of: "Surfacing tool confirmation:", options: .backwards)
+                        ?? str.range(of: "Surfacing ask_question", options: .backwards)
                     let rangeRespond = str.range(of: "Responding to tool confirmation:", options: .backwards)
+                        ?? str.range(of: "AskQuestion response", options: .backwards)
                     let rangeCancel = str.range(of: "CancelCascadeInvocation", options: .backwards)
                     if let s = rangeSurface {
                         let clearedAt = [rangeRespond?.lowerBound, rangeCancel?.lowerBound].compactMap { $0 }.max()

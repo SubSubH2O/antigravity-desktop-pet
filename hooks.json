@@ -29,11 +29,11 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "ask_question",
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "./scripts/set_state.sh working",
+            "command": "./scripts/set_state.sh post_tool",
             "timeout": 5
           }
         ]
